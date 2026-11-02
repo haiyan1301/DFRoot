@@ -43,8 +43,14 @@ A: Typically Android will detect bootloops and boot you into Safe Mode, otherwis
      - [KernelSU](https://github.com/tiann/KernelSU/releases/latest)
      - [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest)
      - [KowSU](https://github.com/KOWX712/KernelSU/releases/latest)
+     - [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/latest)
 
 > If you have a custom KernelSU fork for a specific manufacturer, please make a pull request to add it here.
+
+SukiSU release builds randomize their packaged daemon filename (see
+[SukiSU #1009](https://github.com/SukiSU-Ultra/SukiSU-Ultra/pull/1009)). DFRoot
+supports these builds by identifying the ARM64 executable payload in the manager's
+native library directory. Traditional `libksud.so` managers remain supported.
 
 ## Features
 
@@ -85,6 +91,12 @@ The exploit uses this primitive to patch shellcode into `libc++.so` in the kerne
 
 ```sh
 make
+```
+
+The daemon discovery regression checks run on a host with JDK 11 or later:
+
+```sh
+./scripts/test-ksud-resolver.sh
 ```
 
 ## Credits
