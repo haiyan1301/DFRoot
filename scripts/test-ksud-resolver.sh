@@ -7,5 +7,8 @@ trap 'rm -rf -- "$build_dir"' EXIT
 
 "${JAVAC:-javac}" --release 11 -d "$build_dir" \
     "$project_dir/app/src/main/java/df/root/KsudResolver.java" \
-    "$project_dir/tests/df/root/KsudResolverTest.java"
+    "$project_dir/app/src/main/java/df/root/SuManagerCache.java" \
+    "$project_dir/tests/df/root/KsudResolverTest.java" \
+    "$project_dir/tests/df/root/SuManagerCacheTest.java"
 "${JAVA:-java}" -cp "$build_dir" df.root.KsudResolverTest "$@"
+"${JAVA:-java}" -cp "$build_dir" df.root.SuManagerCacheTest
