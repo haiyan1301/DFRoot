@@ -8,8 +8,14 @@ import java.nio.charset.StandardCharsets;
 
 /** Resolves both traditional and renamed manager daemon payloads without executing them. */
 final class KsudResolver {
-    private static final byte[] KSUD = "ksud".getBytes(StandardCharsets.US_ASCII);
-    private static final byte[] LATE_LOAD = "late-load".getBytes(StandardCharsets.US_ASCII);
+    // Bootstrap helpers also mention ksud and late-load; require daemon commands too.
+    private static final byte[][] MARKERS = {
+            "/data/adb/ksud".getBytes(StandardCharsets.US_ASCII),
+            "late-load".getBytes(StandardCharsets.US_ASCII),
+            "package-name".getBytes(StandardCharsets.US_ASCII),
+            "post-fs-data".getBytes(StandardCharsets.US_ASCII),
+            "boot-completed".getBytes(StandardCharsets.US_ASCII)
+    };
 
     private KsudResolver() {}
 
@@ -40,19 +46,25 @@ final class KsudResolver {
             input.readFully(buffer, 0, 64);
             if (!isArm64Executable(buffer)) return false;
 
-            boolean hasKsud = false;
-            boolean hasLateLoad = false;
+            boolean[] matched = new boolean[MARKERS.length];
+            int remaining = MARKERS.length;
+            int maxMarkerLength = 0;
+            for (byte[] marker : MARKERS) maxMarkerLength = Math.max(maxMarkerLength, marker.length);
             int length = 64;
             while (true) {
                 int read = input.read(buffer, length, buffer.length - length);
                 if (read > 0) length += read;
-                hasKsud |= contains(buffer, length, KSUD);
-                hasLateLoad |= contains(buffer, length, LATE_LOAD);
-                if (hasKsud && hasLateLoad) return true;
+                for (int i = 0; i < MARKERS.length; i++) {
+                    if (!matched[i] && contains(buffer, length, MARKERS[i])) {
+                        matched[i] = true;
+                        remaining--;
+                    }
+                }
+                if (remaining == 0) return true;
                 if (read == -1) return false;
 
-                // Preserve enough bytes for either marker to cross a read boundary.
-                int overlap = Math.min(length, LATE_LOAD.length - 1);
+                // Preserve enough bytes for the longest marker to cross a read boundary.
+                int overlap = Math.min(length, maxMarkerLength - 1);
                 System.arraycopy(buffer, length - overlap, buffer, 0, overlap);
                 length = overlap;
             }
@@ -69,7 +81,7 @@ final class KsudResolver {
             return false;
         }
         // Android PIE executables use ET_DYN too. JNI libraries have no entry point,
-        // and may themselves contain both daemon strings, so reject them here.
+        // and may themselves contain daemon strings, so reject them here.
         for (int i = 24; i < 32; i++) {
             if (header[i] != 0) return true;
         }

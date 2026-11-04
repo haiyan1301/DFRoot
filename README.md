@@ -89,6 +89,9 @@ The exploit uses this primitive to patch shellcode into `libc++.so` in the kerne
 
 ## Building
 
+For fork Release builds, configure your own persistent signing key as described in
+[Release signing](docs/release-signing.md).
+
 ```sh
 make
 ```
