@@ -19,6 +19,9 @@ import java.util.zip.ZipFile;
 
 /** Host-side regression tests; no Android SDK or device is needed. */
 public final class KsudResolverTest {
+    private static final String[] MARKERS = {
+            "/data/adb/ksud", "late-load", "package-name", "post-fs-data", "boot-completed"
+    };
     private static int checks;
 
     public static void main(String[] args) throws Exception {
@@ -65,19 +68,40 @@ public final class KsudResolverTest {
             assertRejected(root, "ordinary-executable", elf(1_200_000));
             assertRejected(root, "only-ksud", withMarker(elf(512), 128, "ksud"));
             assertRejected(root, "only-late-load", withMarker(elf(512), 128, "late-load"));
+            for (int i = 0; i < MARKERS.length; i++) {
+                byte[] incomplete = daemon();
+                Arrays.fill(incomplete, 128 + i * 64, 128 + i * 64 + MARKERS[i].length(), (byte) 0);
+                assertRejected(root, "missing-" + i, incomplete);
+            }
+
+            // DFRoot's bootstrap has the first three strings, but is not a manager daemon.
+            byte[] bootstrap = withMarker(withMarker(withMarker(elf(512), 128,
+                    "/data/adb/ksud"), 192, "late-load"), 256, "package-name");
+            Path bootstrapDir = Files.createDirectory(root.resolve("bootstrap"));
+            File helper = write(bootstrapDir, "libbootstrap.so", bootstrap);
+            expect(null, KsudResolver.find(bootstrapDir.toFile()), "bootstrap is not a daemon");
+            Files.move(helper.toPath(), bootstrapDir.resolve("libabcdefghij.so"));
+            expect(null, KsudResolver.find(bootstrapDir.toFile()), "renamed bootstrap is not a daemon");
+            File actualDaemon = write(bootstrapDir, "libsukid.so", daemon());
+            expect(actualDaemon, KsudResolver.find(bootstrapDir.toFile()), "daemon beside bootstrap with unrestricted name");
 
             Path execDir = Files.createDirectory(root.resolve("exec"));
             File executable = write(execDir, "libexecutable.so", mutate(daemon(), 16, 2));
             expect(executable, KsudResolver.find(execDir.toFile()), "ET_EXEC daemon");
 
-            // Exercise both reads from offset zero and reads after a separate ELF header.
-            for (int shift : new int[] {-8, 0, 64}) {
-                Path boundaryDir = Files.createDirectory(root.resolve("boundary-" + shift));
-                byte[] bytes = elf(25_000);
-                withMarker(bytes, 8192 + shift - 2, "ksud");
-                withMarker(bytes, 16_384 + shift - 4, "late-load");
-                File boundary = write(boundaryDir, "libboundary.so", bytes);
-                expect(boundary, KsudResolver.find(boundaryDir.toFile()), "markers across read boundaries " + shift);
+            // Each marker must survive every split across the first and a later read boundary.
+            for (int boundary : new int[] {8192, 16_384 - 13}) {
+                for (int i = 0; i < MARKERS.length; i++) {
+                    for (int split = 1; split < MARKERS[i].length(); split++) {
+                        String name = "boundary-" + boundary + "-" + i + "-" + split;
+                        Path boundaryDir = Files.createDirectory(root.resolve(name));
+                        byte[] bytes = Arrays.copyOf(daemon(), 25_000);
+                        Arrays.fill(bytes, 128 + i * 64, 128 + i * 64 + MARKERS[i].length(), (byte) 0);
+                        withMarker(bytes, boundary - split, MARKERS[i]);
+                        File candidate = write(boundaryDir, "libboundary.so", bytes);
+                        expect(candidate, KsudResolver.find(boundaryDir.toFile()), name);
+                    }
+                }
             }
 
             Path ambiguousDir = Files.createDirectory(root.resolve("ambiguous"));
@@ -169,7 +193,9 @@ public final class KsudResolverTest {
     }
 
     private static byte[] daemon() {
-        return withMarker(withMarker(elf(512), 128, "ksud"), 256, "late-load");
+        byte[] bytes = elf(512);
+        for (int i = 0; i < MARKERS.length; i++) withMarker(bytes, 128 + i * 64, MARKERS[i]);
+        return bytes;
     }
 
     private static byte[] mutate(byte[] bytes, int offset, int value) {

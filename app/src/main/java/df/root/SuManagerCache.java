@@ -26,7 +26,7 @@ final class SuManagerCache {
 
     boolean hasKsud(String packageName, long lastUpdateTime, String sourceDir, String nativeLibraryDir) {
         // Bump this schema when the daemon recognition rules change.
-        String identity = "v1\n" + lastUpdateTime + "\n" + field(sourceDir) + field(nativeLibraryDir);
+        String identity = "v2\n" + lastUpdateTime + "\n" + field(sourceDir) + field(nativeLibraryDir);
         String saved = entries.get(packageName);
         if ((identity + "true").equals(saved)) return true;
         if ((identity + "false").equals(saved)) return false;

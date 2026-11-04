@@ -50,13 +50,25 @@ public final class SuManagerCacheTest {
         check(pruned.isDirty() && pruned.snapshot().keySet().equals(Set.of("manager")), "uninstalled entries removed");
 
         Map<String, String> stale = new HashMap<>(cache.snapshot());
-        stale.put("manager", stale.get("manager").replace("v1\n", "v0\n"));
+        stale.put("manager", stale.get("manager").replace("v2\n", "v1\n"));
         stale.put("ordinary", "invalid-cache-data");
         CountingProbe staleProbe = new CountingProbe();
         SuManagerCache invalidated = new SuManagerCache(stale, staleProbe);
         check(invalidated.hasKsud("manager", 1, "/app/base.apk", "/lib/manager"), "old schema rechecked");
         check(!invalidated.hasKsud("ordinary", 1, "/other/base.apk", "/lib/ordinary"), "malformed result rechecked");
         check(staleProbe.calls == 2, "invalid cache entries do not hide applications");
+
+        Map<String, String> oldPositive = new HashMap<>();
+        oldPositive.put("ordinary", "v1\n1\n15:/other/base.apk13:/lib/ordinarytrue");
+        CountingProbe correctedProbe = new CountingProbe();
+        SuManagerCache corrected = new SuManagerCache(oldPositive, correctedProbe);
+        check(!corrected.hasKsud("ordinary", 1, "/other/base.apk", "/lib/ordinary"),
+                "old false positive is rechecked with unchanged package metadata");
+        check(correctedProbe.calls == 1 && corrected.isDirty(), "corrected result will be persisted");
+        SuManagerCache correctedRestart = new SuManagerCache(corrected.snapshot(), correctedProbe);
+        check(!correctedRestart.hasKsud("ordinary", 1, "/other/base.apk", "/lib/ordinary"),
+                "corrected negative result survives restart");
+        check(correctedProbe.calls == 1 && !correctedRestart.isDirty(), "corrected cache avoids another probe");
 
         CountingProbe nullProbe = new CountingProbe();
         SuManagerCache noLibraries = new SuManagerCache(Collections.emptyMap(), nullProbe);
